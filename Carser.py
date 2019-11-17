@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[20]:
 
 
 import pandas as pd
 import numpy as np
 import os, sys
 import glob
-input_path = r'/home/birdfly/Taxidata/20170325'
-output_path = "/home/birdfly/TaxidataResult/AllData/20170325/graph/"
+import os
+input_path = r'/home/birdfly/Taxidata/'
+output_path = "/home/birdfly/TaxidataResult/AllData/graph/"
+output_path_in = "/home/birdfly/TaxidataResult/AllData/graph_in/"
+output_path_out = "/home/birdfly/TaxidataResult/AllData/graph_out/"
 os.chdir(input_path)
 data_cols = ['date','time', 'label', 'tag','lat','lon','speed?','direction?','status', '?']
 
@@ -17,38 +20,56 @@ data_cols = ['date','time', 'label', 'tag','lat','lon','speed?','direction?','st
 # In[ ]:
 
 
-data_cols = ['date','time', 'label', 'tag','lat','lon','speed?','direction?','status', '?']
-date_data_files = glob.glob(input_path + "/*.TXT")
-date_data_files = sorted(date_data_files)   
-print(len(date_data_files))
+for sub_path in os.listdir(input_path):
+    generate_map(input_path, sub_path,output_path, output_path_in, output_path_out)
 
-index_count = 0
-sample_data = []
-for date_data_file in date_data_files:
-    print("**********" + date_data_file )
-    sample_data.append(pd.read_csv(date_data_file, sep=',',encoding='GB2312', names= data_cols, header=None, dtype={'time': object}))
 
-    index_count = index_count + 1
-    if index_count % 2 == 0:
-        sample_data = pd.concat(sample_data, axis=0, ignore_index=True)
-        sample_data['tag'] = sample_data['tag'].str.replace(r'[^\x00-\x7F]+', '')
-        record_data = generate_take_record_data(sample_data)
-        graph = generate_map(record_data)
-        
-        if not os.path.exists(output_path):
-            os.makedirs(output_path, mode=0o777) 
-        pd.DataFrame(graph).to_csv (output_path + str(index_count / 2) + ".csv", index = None, mode = 'w',header=None)
-        
-        sample_data = []
+# In[24]:
+
+
+def generate_map(input_path, sub_path, output_path, output_path_in, output_path_out):
+    data_cols = ['date','time', 'label', 'tag','lat','lon','speed?','direction?','status', '?']
+    date_data_files = glob.glob(os.path.join(input_path, sub_path) + "/*.TXT")
+    print(os.path.join(input_path, sub_path))
+    date_data_files = sorted(date_data_files)   
+
+    index_count = 0
+    sample_data = []
+    for date_data_file in date_data_files:
+        sample_data.append(pd.read_csv(date_data_file, sep=',',encoding='GB2312', names= data_cols, header=None, dtype={'time': object}))
+
+        index_count = index_count + 1
+        if index_count % 2 == 0:
+            sample_data = pd.concat(sample_data, axis=0, ignore_index=True)
+            sample_data['tag'] = sample_data['tag'].str.replace(r'[^\x00-\x7F]+', '')
+            record_data = generate_take_record_data(sample_data)
+            graph, graphIn, graphOut = generate_map(record_data)
+            
+            path = os.path.join(output_path, sub_path)
+            if not os.path.exists(path):
+                os.makedirs(path, mode=0o777) 
+            pd.DataFrame(graph).to_csv (path + str(index_count / 2) + ".csv", index = None, mode = 'w',header=None)
+   
+            path_in = os.path.join(output_path_in, sub_path)
+            if not os.path.exists(path_in):
+                os.makedirs(path_in, mode=0o777) 
+            pd.DataFrame(graphIn).to_csv (path_in + str(index_count / 2) + ".csv", index = None, mode = 'w',header=None)
+            print(path_in)
+            os.path.join(output_path_out, sub_path)
+            if not os.path.exists(path_out):
+                os.makedirs(path_out, mode=0o777) 
+            pd.DataFrame(graphOut).to_csv (path_out + str(index_count / 2) + ".csv", index = None, mode = 'w',header=None)
+            print(path_out)
+            sample_data = []
     
 
 
-# In[2]:
+# In[23]:
 
 
 def generate_map(date_data):
     # Generate N*N graph
-    N = 100
+    N = 500
 
     max_lat = 106.753129
     min_lat = 106.273290
@@ -59,8 +80,8 @@ def generate_map(date_data):
     lon_range = (max_lon - min_lon) / N
 
     graph = np.zeros((N,N))
-
-    count = 0
+    graphIn = np.zeros((N,N))
+    graphOut = np.zeros((N,N))
     previous_row = None
     for index, row in date_data.iterrows(): 
       lat = row['lat']
@@ -88,18 +109,17 @@ def generate_map(date_data):
         lon_index = int((lon - min_lon) / lon_range)
 
       if row['status'] == 0: # take taxi
-        count = count + 1
         graph[lon_index, lat_index] = graph[lon_index, lat_index] + 1
+        graphIn[lon_index, lat_index] = graphIn[lon_index, lat_index] + 1
       elif row['status'] == 1: # drop off taxi
-        count = count - 1
         graph[lon_index, lat_index] = graph[lon_index, lat_index] - 1
-
+        graphOut[lon_index, lat_index] = graphOut[lon_index, lat_index] + 1
       previous_row = row
     
-    return graph
+    return graph, graphIn, graphOut
 
 
-# In[3]:
+# In[22]:
 
 
 def generate_take_record_data(original_data):
